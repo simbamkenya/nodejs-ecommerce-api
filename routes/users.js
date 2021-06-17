@@ -3,9 +3,11 @@ const User = require('../models/user');
 const router = express.Router();
 const bcrypt = require('bcrypt');
 const _ = require('lodash');
-const salt = require('../services/salt');
+// const salt = require('../services/salt');
+const auth = require('../middleware/auth');
+
 const jwt = require('jsonwebtoken');
-const config = require('config')
+const config = require('config');
 
 
 router.get('/', async (req, res)=>{
@@ -13,16 +15,21 @@ router.get('/', async (req, res)=>{
     if(userList) res.status(200).send(userList);
 });
 
-router.post('/add', async (req, res)=>{
+
+//register new user
+router.post('/add', auth, async (req, res)=>{
     const user = new User(_.pick(req.body, ['email', 'name', 'phone', 'passwordHash', 'isAdmin', 'street', 'apartment', 'zip']))
     
+    const salt = await bcrypt.genSalt(10);
 
     user.passwordHash = await bcrypt.hash(user.passwordHash, salt);
 
     const newUser = await user.save();
+
+    const token = user.generateAuthToken();
+
     if(newUser){
-       res.status(200).send(newUser) 
-       return;
+       return res.header('x-header-token', token).send(_.pick(newUser, ['_id', 'name', 'email']));
     } 
 })
 
@@ -38,9 +45,9 @@ router.post('/login', async (req, res) => {
     if(!validPassword) {
         res.status(400).send('invalid password or email');
     }
-    const token = jwt.sign({userId: user.id}, config.get('jwtPrivateKey'))
-    res.header('x-auth-token', token)
-    res.send(_.pick(user, ['_id', "name", "email"]))
+    
+    const token = user.generateAuthToken();
+    res.header('x-auth-token', token).send(_.pick(user, ['_id', "name", "email"]));
 })
 
 //list of users 
