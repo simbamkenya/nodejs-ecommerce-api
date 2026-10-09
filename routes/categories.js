@@ -1,86 +1,54 @@
 const express = require('express');
-const router = express.Router();
-const Category = require('../models/category')
 const Joi = require('joi');
+const Category = require('../models/category');
+const Product = require('../models/product');
+const { auth, admin } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
 
-const validateCategory = (category)=>{
-    const schema = Joi.object({
-        name: Joi.string().min(3).max(10).required(),
-        icon: Joi.string().min(3).max(15).required(),
-        color: Joi.string().min(3).max(10),
-    });
-    return schema.validate(category)
-}
+const router = express.Router();
+
+const categorySchema = Joi.object({
+    name: Joi.string().trim().min(2).max(50).required(),
+    icon: Joi.string().max(100),
+    color: Joi.string().max(20)
+});
 
 // all categories
-router.get('/all', async (req, res)=>{
+router.get('/', async (req, res) => {
     const categoryList = await Category.find();
-    if(categoryList) res.status(200).send(categoryList)
-})
+    res.send(categoryList);
+});
+
+router.get('/:id', async (req, res) => {
+    const category = await Category.findById(req.params.id);
+    if (!category) return res.status(404).send({ error: 'Category with the given id was not found' });
+    res.send(category);
+});
 
 //create category
-router.post('/add', async (req, res)=>{
-    //validate
-    const result = validateCategory(req.body);
-    if(result.error) {
-        res.status(400).send(result.error.details[0].message)
-         return;
-    }
+router.post('/', auth, admin, validate(categorySchema), async (req, res) => {
+    const category = await Category.create(req.body);
+    res.status(201).send(category);
+});
 
-    const newCategory = new Category({
-        name: req.body.name,
-        icon: req.body.icon,
-        color: req.body.color
-    })
-
-    const results = await newCategory.save();
-    if(results) res.status(200).send(newCategory)
-})
-
-router.get('/:id', async (req, res)=>{
-    const category = await Category.findById(req.params.id);
-    if(!category){
-        res.status(404).send('Category with the given id could not be found...');
-        return;
-    }
+//update
+router.put('/:id', auth, admin, validate(categorySchema), async (req, res) => {
+    const category = await Category.findByIdAndUpdate(req.params.id, req.body, {
+        returnDocument: 'after',
+        runValidators: true
+    });
+    if (!category) return res.status(404).send({ error: 'Category with the given id was not found' });
     res.send(category);
-})
+});
 
-//update 
-router.put('/update/:id', async (req, res)=>{
-    //find
-    const category = Category.findById(req.params.id);
-    if(!category){
-        res.status(404).send('Category with the given id was not found')
-    }
-    //validate
-    const result = validateCategory(req.body)
-    if(result.error){
-        res.status(400).send(result.error.details[0].message)
-        return;
-    }
+//delete
+router.delete('/:id', auth, admin, async (req, res) => {
+    const inUse = await Product.exists({ category: req.params.id });
+    if (inUse) return res.status(409).send({ error: 'Category still has products' });
 
-    const newCategory = new Category({
-        name: req.body.name,
-        icon: req.body.icon,
-        color: req.body.color
-    })
-
-    const results = await newCategory.save();
-    if(results) res.status(200).send(newCategory)
-})
-
-//delete not tested
-router.delete('/delete/:id', async (req, res)=>{
-    const results = await Category.findByIdAndRemove(req.params.id);
-    // if(!results) {
-    //     res.status(400).send('couse not deleted');
-    //     return;
-    // }
-
-})
-
-
-
+    const category = await Category.findByIdAndDelete(req.params.id);
+    if (!category) return res.status(404).send({ error: 'Category with the given id was not found' });
+    res.send(category);
+});
 
 module.exports = router;

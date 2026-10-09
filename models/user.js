@@ -1,16 +1,19 @@
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
-const config = require('config');
-
+const config = require('../config');
 
 const userSchema = new mongoose.Schema({
     name: {
         type: String,
-        required: true
+        required: true,
+        trim: true
     },
     email: {
         type: String,
-        required: true
+        required: true,
+        unique: true,
+        lowercase: true,
+        trim: true
     },
     passwordHash: {
         type: String,
@@ -24,7 +27,7 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
-    street : {
+    street: {
         type: String,
         default: ''
     },
@@ -36,11 +39,22 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: ''
     }
+}, {
+    toJSON: {
+        transform(doc, ret) {
+            delete ret.passwordHash;
+            return ret;
+        }
+    }
 });
 
-userSchema.methods.generateAuthToken = function (){
-    const token = jwt.sign({userId: this._id}, config.get('jwtPrivateKey'))
-    return token;
-}
+userSchema.methods.generateAuthToken = function () {
+    return jwt.sign(
+        { userId: this._id, isAdmin: this.isAdmin },
+        config.jwtPrivateKey,
+        { expiresIn: config.jwtExpiresIn }
+    );
+};
+
 const User = mongoose.model('User', userSchema);
 module.exports = User;

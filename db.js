@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
+const config = require('./config');
 
-mongoose.connect('mongodb://localhost/ecommerce-api', {
-    useFindAndModify: false,
-    useCreateIndex: true,
-    useUnifiedTopology: true,
-    useNewUrlParser: true
-}).then(()=> console.log('mongodb is connected'));
-module.exports = mongoose;
+async function connect() {
+    await mongoose.connect(config.mongodbUri);
+    console.log('mongodb is connected');
+}
+
+module.exports = { connect };

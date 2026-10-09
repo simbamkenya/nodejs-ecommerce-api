@@ -3,18 +3,20 @@ const mongoose = require('mongoose');
 const productSchema = new mongoose.Schema({
     name: {
         type: String,
-        required: true
-    }, 
+        required: true,
+        trim: true
+    },
     description: {
         type: String,
         required: true
     },
-    richDescription : {
+    richDescription: {
         type: String,
         default: ''
     },
     image: {
-        type: String
+        type: String,
+        default: ''
     },
     images: [{
         type: String
@@ -23,10 +25,10 @@ const productSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
-    price:{
+    price: {
         type: Number,
-        default: 0
-
+        default: 0,
+        min: 0
     },
     category: {
         type: mongoose.Schema.Types.ObjectId,
@@ -36,13 +38,12 @@ const productSchema = new mongoose.Schema({
     countInStock: {
         type: Number,
         required: true,
-        min: 0,
-        max: 255
-    }, 
+        min: 0
+    },
     rating: {
         type: Number,
         default: 0
-    }, 
+    },
     numReviews: {
         type: Number,
         default: 0
@@ -57,5 +58,5 @@ const productSchema = new mongoose.Schema({
     }
 });
 
-const Product = mongoose.model('Product', productSchema)
+const Product = mongoose.model('Product', productSchema);
 module.exports = Product;

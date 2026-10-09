@@ -1,18 +1,26 @@
 const jwt = require('jsonwebtoken');
-const config = require('config');
+const config = require('../config');
 
-function auth(req, res, next){
-    const token = req.header('x-header-token');
-    if(!token){
-        res.status(400).send('Access dined. No token provided');
+function auth(req, res, next) {
+    const header = req.header('authorization') || '';
+    const [scheme, token] = header.split(' ');
+    if (scheme !== 'Bearer' || !token) {
+        return res.status(401).send({ error: 'Access denied. No token provided' });
     }
 
     try {
-        const decoded = jwt.verify(token, config.get('jwtPrivateKey'));
-        req.user = decoded;
+        req.user = jwt.verify(token, config.jwtPrivateKey);
         next();
     } catch (ex) {
-        res.status(400).send('invalid token');
+        res.status(401).send({ error: 'Invalid token' });
     }
 }
-module.exports = auth;
+
+function admin(req, res, next) {
+    if (!req.user || !req.user.isAdmin) {
+        return res.status(403).send({ error: 'Access denied. Admins only' });
+    }
+    next();
+}
+
+module.exports = { auth, admin };
