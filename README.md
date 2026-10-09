@@ -19,6 +19,19 @@ Register a user, then promote them to admin:
 npm run make-admin -- you@example.com
 ```
 
+## Structure
+
+```
+routes/        HTTP layer: validation, auth checks, responses
+repositories/  data access, the only code that touches Mongoose models
+models/        Mongoose schemas
+services/      shared logic (JWT tokens)
+middleware/    auth, validation, error handling
+errors.js      app errors that map to HTTP status codes
+```
+
+Repositories return plain objects and turn database errors into `errors.js` errors, so routes don't depend on Mongoose.
+
 ## Auth
 
 `POST /api/v1/users/login` returns `{ user, token }`. Send the token as `Authorization: Bearer <token>`.

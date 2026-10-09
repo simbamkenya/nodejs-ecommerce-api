@@ -6,4 +6,8 @@ async function connect() {
     console.log('mongodb is connected');
 }
 
-module.exports = { connect };
+async function disconnect() {
+    await mongoose.disconnect();
+}
+
+module.exports = { connect, disconnect };

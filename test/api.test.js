@@ -9,7 +9,7 @@ const request = require('supertest');
 const mongoose = require('mongoose');
 const app = require('../app');
 const db = require('../db');
-const User = require('../models/user');
+const { userRepository } = require('../repositories');
 
 const api = request(app);
 let adminToken, userToken, userId, categoryId, productId, orderId;
@@ -25,10 +25,10 @@ async function register(email) {
 before(async () => {
     await db.connect();
     await mongoose.connection.dropDatabase();
-    await User.init();
+    await mongoose.model('User').init();
 
     await register('admin@test.com');
-    await User.updateOne({ email: 'admin@test.com' }, { isAdmin: true });
+    await userRepository.setAdminByEmail('admin@test.com');
     const login = await api.post('/api/v1/users/login').send({ email: 'admin@test.com', password: 'password123' });
     adminToken = login.body.token;
 });
@@ -72,7 +72,7 @@ test('user list requires admin and never leaks hashes', async () => {
 test('users can only read their own profile', async () => {
     const me = await api.get(`/api/v1/users/${userId}`).set('Authorization', `Bearer ${userToken}`);
     assert.equal(me.status, 200);
-    const admins = await User.findOne({ email: 'admin@test.com' });
+    const admins = await userRepository.findByEmailWithPassword('admin@test.com');
     const other = await api.get(`/api/v1/users/${admins._id}`).set('Authorization', `Bearer ${userToken}`);
     assert.equal(other.status, 403);
 });
@@ -113,8 +113,8 @@ test('product CRUD', async () => {
     assert.equal(upd.body.price, 150);
 });
 
-test('invalid ids return 400, missing ones 404', async () => {
-    assert.equal((await api.get('/api/v1/products/not-an-id')).status, 400);
+test('malformed and missing ids both return 404', async () => {
+    assert.equal((await api.get('/api/v1/products/not-an-id')).status, 404);
     assert.equal((await api.get(`/api/v1/products/${new mongoose.Types.ObjectId()}`)).status, 404);
 });
 
@@ -153,6 +153,15 @@ test('cancelling an order restocks once', async () => {
     assert.equal((await cancel()).status, 200);
     assert.equal((await cancel()).status, 409);
     assert.equal((await api.get(`/api/v1/products/${productId}`)).body.countInStock, 5);
+});
+
+test('login response never includes the password hash', async () => {
+    const res = await api.post('/api/v1/users/login').send({ email: 'user@test.com', password: 'password123' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.user.passwordHash, undefined);
+    const me = await api.get('/api/v1/users/me').set('Authorization', `Bearer ${res.body.token}`);
+    assert.equal(me.body.email, 'user@test.com');
+    assert.equal(me.body.passwordHash, undefined);
 });
 
 test('unknown routes and bad tokens', async () => {

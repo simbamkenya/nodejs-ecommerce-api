@@ -1,7 +1,6 @@
 // usage: npm run make-admin -- user@example.com
-const mongoose = require('mongoose');
 const db = require('../db');
-const User = require('../models/user');
+const { userRepository } = require('../repositories');
 
 async function main() {
     const email = process.argv[2];
@@ -11,13 +10,9 @@ async function main() {
     }
 
     await db.connect();
-    const user = await User.findOneAndUpdate(
-        { email: email.toLowerCase() },
-        { isAdmin: true },
-        { returnDocument: 'after' }
-    );
+    const user = await userRepository.setAdminByEmail(email);
     console.log(user ? `${user.email} is now an admin (log in again to get an admin token)` : `no user with email ${email}`);
-    await mongoose.disconnect();
+    await db.disconnect();
     process.exitCode = user ? 0 : 1;
 }
 

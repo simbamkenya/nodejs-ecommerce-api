@@ -1,7 +1,6 @@
 const express = require('express');
 const Joi = require('joi');
-const Order = require('../models/order');
-const Product = require('../models/product');
+const { orderRepository, productRepository } = require('../repositories');
 const { auth, admin } = require('../middleware/auth');
 const { validate, objectId } = require('../middleware/validate');
 
@@ -23,31 +22,21 @@ const orderSchema = Joi.object({
 });
 
 const statusSchema = Joi.object({
-    status: Joi.string().valid(...Order.STATUSES).required()
+    status: Joi.string().valid(...orderRepository.STATUSES).required()
 });
-
-async function restock(items) {
-    await Promise.all(items.map((item) =>
-        Product.updateOne({ _id: item.product }, { $inc: { countInStock: item.quantity } })
-    ));
-}
 
 //all orders
 router.get('/', auth, admin, async (req, res) => {
-    const orderList = await Order.find()
-        .populate('user', 'name email')
-        .sort({ dateOrdered: -1 });
-    res.send(orderList);
+    res.send(await orderRepository.findAll());
 });
 
 //orders of the logged in user
 router.get('/mine', auth, async (req, res) => {
-    const orderList = await Order.find({ user: req.user.userId }).sort({ dateOrdered: -1 });
-    res.send(orderList);
+    res.send(await orderRepository.findByUser(req.user.userId));
 });
 
 router.get('/:id', auth, async (req, res) => {
-    const order = await Order.findById(req.params.id).populate('user', 'name email');
+    const order = await orderRepository.findById(req.params.id);
     if (!order) return res.status(404).send({ error: 'Order not found' });
     if (!req.user.isAdmin && order.user._id.toString() !== req.user.userId) {
         return res.status(404).send({ error: 'Order not found' });
@@ -60,14 +49,10 @@ router.post('/', auth, validate(orderSchema), async (req, res) => {
     const reserved = [];
     try {
         for (const { product: productId, quantity } of req.body.orderItems) {
-            const product = await Product.findOneAndUpdate(
-                { _id: productId, countInStock: { $gte: quantity } },
-                { $inc: { countInStock: -quantity } },
-                { returnDocument: 'after' }
-            );
+            const product = await productRepository.reserveStock(productId, quantity);
             if (!product) {
-                await restock(reserved);
-                const exists = await Product.exists({ _id: productId });
+                await productRepository.releaseStock(reserved);
+                const exists = await productRepository.exists(productId);
                 return res.status(exists ? 409 : 400).send({
                     error: exists ? `Not enough stock for product ${productId}` : `Invalid product ${productId}`
                 });
@@ -76,7 +61,7 @@ router.post('/', auth, validate(orderSchema), async (req, res) => {
         }
 
         const totalPrice = reserved.reduce((sum, item) => sum + item.price * item.quantity, 0);
-        const order = await Order.create({
+        const order = await orderRepository.create({
             user: req.user.userId,
             orderItems: reserved,
             shippingAddress: req.body.shippingAddress,
@@ -85,26 +70,22 @@ router.post('/', auth, validate(orderSchema), async (req, res) => {
         });
         res.status(201).send(order);
     } catch (ex) {
-        await restock(reserved);
+        await productRepository.releaseStock(reserved);
         throw ex;
     }
 });
 
 //update order status, cancelling returns the items to stock
 router.put('/:id/status', auth, admin, validate(statusSchema), async (req, res) => {
-    const order = await Order.findById(req.params.id);
+    const order = await orderRepository.findById(req.params.id);
     if (!order) return res.status(404).send({ error: 'Order not found' });
     if (order.status === 'cancelled') return res.status(409).send({ error: 'Order is already cancelled' });
 
     // only one request may move the order out of its current status
-    const updated = await Order.findOneAndUpdate(
-        { _id: order._id, status: order.status },
-        { status: req.body.status },
-        { returnDocument: 'after' }
-    );
+    const updated = await orderRepository.updateStatus(order._id, order.status, req.body.status);
     if (!updated) return res.status(409).send({ error: 'Order was modified concurrently, try again' });
 
-    if (updated.status === 'cancelled') await restock(updated.orderItems);
+    if (updated.status === 'cancelled') await productRepository.releaseStock(updated.orderItems);
     res.send(updated);
 });
 
